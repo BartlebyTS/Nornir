@@ -44,27 +44,51 @@ for device_id in device_id_list:
         else:
             continue
 
-# Check if Ports are Admin UP Link Down and have been for an extended period (not flapping)
+# Check and remove if ports are part of lag, you can bring down ports in a lag if the primary is down and you disable it
+
 
 bad_ports = {}
+duplicate = {}
+lag_ports = []
+lag_ports_dict = {}
+port_id_api_call = {}
 for port_id in ports_to_check:
     try:
         url = (f"https://{WEB_ADDRESS}/api/v0/ports/{port_id}")
         res_ports = requests.get(url, headers=headers, verify=False).json()
-        checking_ports = res_ports['port'][0]
-        try:
-            if (checking_ports['ifLastChange'] > 10000000 or checking_ports['ifLastChange'] == 0) and checking_ports['ifAdminStatus'] == 'up'\
-            and checking_ports['ifOperStatus'] == 'down' and checking_ports['device_id'] not in bad_ports:
-                bad_ports[checking_ports['device_id']] = [checking_ports['ifDescr']]
-            elif (checking_ports['ifLastChange'] > 10000000 or checking_ports['ifLastChange'] == 0) and checking_ports['ifAdminStatus'] == 'up'\
-            and checking_ports['ifOperStatus'] == 'down' and checking_ports['device_id'] in bad_ports:
-                bad_ports[checking_ports['device_id']].append(checking_ports['ifDescr'])
-            else:
-                continue
-        except:
-            print(f"port {port_id} in device {checking_ports['device_id']} did not work")
+        port_id_api_call[port_id] = res_ports['port'][0]
     except:
-        print(f" issue with {port_id}")
+        print(f"{port_id} didn't work")
+for port_id in ports_to_check:
+    try:
+        checking_ports = port_id_api_call[port_id]
+        if checking_ports['ifPhysAddress'] not in duplicate:
+            duplicate[checking_ports['ifPhysAddress']] = port_id
+        else:
+            lag_ports_dict[checking_ports['ifPhysAddress']] = duplicate[checking_ports['ifPhysAddress']]
+            lag_ports.append(port_id)
+    except:
+        print(f"{port_id} didn't work")
+for i in lag_ports_dict:
+     lag_ports.append(lag_ports_dict[i])
+for i in lag_ports:
+    del ports_to_check[i]
+
+# Check if Ports are Admin UP Link Down and have been for an extended period (not flapping)
+
+for port_id in ports_to_check:
+    try:
+        checking_ports = port_id_api_call[port_id]
+        if (checking_ports['ifLastChange'] > 10000000 or checking_ports['ifLastChange'] == 0) and checking_ports['ifAdminStatus'] == 'up'\
+        and checking_ports['ifOperStatus'] == 'down' and checking_ports['device_id'] not in bad_ports:
+            bad_ports[checking_ports['device_id']] = [checking_ports['ifDescr']]
+        elif (checking_ports['ifLastChange'] > 10000000 or checking_ports['ifLastChange'] == 0) and checking_ports['ifAdminStatus'] == 'up'\
+        and checking_ports['ifOperStatus'] == 'down' and checking_ports['device_id'] in bad_ports:
+            bad_ports[checking_ports['device_id']].append(checking_ports['ifDescr'])
+        else:
+            continue
+    except:
+        print(f"port {port_id} in device {checking_ports['device_id']} did not work")
 
 # Convert the Librenms device ID that was previously used for API calls to hostname
 
