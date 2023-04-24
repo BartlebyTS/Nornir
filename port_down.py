@@ -21,14 +21,28 @@ PASSWORD = env('NORNIR_PASSWORD')
 # Initiate Nornir
 
 nr = InitNornir(config_file="config.yaml")
-platform="brocade_fastiron"
-target_hosts = nr.filter(platform=platform)
+platform_brocade="brocade_fastiron"
+platform_cisco_standard="cisco_ios"
+platform_cisco_asa="cisco_asa"
+target_hosts_brocade = nr.filter(platform=platform_brocade)
+target_hosts_cisco_standard = nr.filter(platform=platform_cisco_standard)
+target_hosts_cisco_asa = nr.filter(platform=platform_cisco_asa)
 device_id_list = []
 host_to_id_list_map = {}
-for host in target_hosts.inventory.hosts:
+for host in target_hosts_brocade.inventory.hosts:
     check = nr.inventory.hosts[host]['device_id']
     device_id_list.append(check)
     host_to_id_list_map[check] = host
+for host in target_hosts_cisco_standard.inventory.hosts:
+    check = nr.inventory.hosts[host]['device_id']
+    device_id_list.append(check)
+    host_to_id_list_map[check] = host
+for host in target_hosts_cisco_asa.inventory.hosts:
+    check = nr.inventory.hosts[host]['device_id']
+    device_id_list.append(check)
+    host_to_id_list_map[check] = host
+
+print(device_id_list)
 
 # Pull LibreNMS port IDs from Devices in inventory
 
@@ -98,17 +112,28 @@ for device in bad_ports:
 	bad_port_hostname[device_id_conversion] = bad_ports[device]
 foundry_devices = {}
 brocade_devices = {}
-
+cisco_standard_devices = {}
+cisco_asa_devices = {}
 # In current iteration just doing old Brocade switching infrastructure and seperating them here
+
+print(bad_port_hostname)
 
 for device in bad_port_hostname:
     group_check = nr.inventory.hosts[f'{device}'].dict()
+    print(group_check)
     if group_check['groups'] == ['foundry_networking']:
         foundry_devices[device] = bad_port_hostname[device]
-    else:
+    elif group_check['groups'] == ['brocade_fastiron'] or group_check['groups'] == ['brocade_ironware']:
         brocade_devices[device] = bad_port_hostname[device]
+    elif group_check['groups'] == ['cisco_standard']:
+        cisco_standard_devices[device] = bad_port_hostname[device]
+    elif group_check['groups'] == ['cisco_asa']:
+        cisco_asa_devices[device] = bad_port_hostname[device]
+
 new_foundry = {}
 new_brocade = {}
+new_cisco_standard = {}
+new_cisco_asa = {}
 
 # Use regex to take ports descriptions into forms useful for commands
 
@@ -135,6 +160,37 @@ for device in brocade_devices:
         new_brocade[device] = corrected_ports
     except:
         print(f" {device} had an issue")
+for device in cisco_standard_devices:
+    try:
+        list_of_devices = cisco_standard_devices[device]
+        corrected_ports = []
+        for k in list_of_devices:
+            if k == 'Management':
+                corrected_ports.append('management 1')
+            elif k[0] == 'V':
+                continue
+            else:
+                regex1 = re.findall(r'\d{1,2}\/\d{1,2}\/\d{1,2}:?\d?', k)[0]
+                corrected_ports.append(f"e {regex1}")
+        new_cisco_standard[device] = corrected_ports
+    except:
+        print(f" {device} had an issue")
+for device in cisco_asa_devices:
+    try:
+        list_of_devices = cisco_asa_devices[device]
+        corrected_ports = []
+        for k in list_of_devices:
+            if k == 'Management':
+                corrected_ports.append('management 1')
+            elif k[0] == 'V':
+                continue
+            else:
+                regex1 = re.findall(r'\d{1,2}\/\d{1,2}:?\d?', k)[0]
+                corrected_ports.append(f"e {regex1}")
+        new_cisco_asa[device] = corrected_ports
+    except:
+        print(f" {device} had an issue")
+
 
 # Create dictionary of device with list of commands to run
 
@@ -167,13 +223,45 @@ for device in new_foundry:
     except:
         print(f"issue with {device}")
 
+for device in new_cisco_standard:
+    try:
+        command_device = nr.inventory.hosts[device].dict()['hostname']
+        new_command_device_list = []
+        for i in new_cisco_standard[device]:
+            new_command_device_list.append(f"interface {i}")
+            new_command_device_list.append("shutdown")
+            new_command_device_list.append("exit")
+        new_command_device_list.append("write memory")
+        new_commands[command_device] = new_command_device_list
+    except:
+        print(f"issue with {device}")
+
+deviceip_to_type = {}
+for device in new_cisco_asa:
+    try:
+        command_device = nr.inventory.hosts[device].dict()['hostname']
+        command_type = nr.inventory.hosts[device].dict()['groups']
+        deviceip_to_type[command_device] = command_type 
+        new_command_device_list = []
+        for i in new_cisco_asa[device]:
+            new_command_device_list.append(f"interface {i}")
+            new_command_device_list.append("shutdown")
+            new_command_device_list.append("exit")
+        new_command_device_list.append("write memory")
+        new_commands[command_device] = new_command_device_list
+    except:
+        print(f"issue with {device}")
+
+
+
 # Use NetMiko to run commands
 
 device_list = list()
 
 for device_ip in new_commands:
+    
     device = {
-        "device_type": "brocade_fastiron",
+        "device_type": deviceip_to_type[device_ip],
         "host": device_ip,
         "username": USER,
         "password": PASSWORD, 
