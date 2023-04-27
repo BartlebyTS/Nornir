@@ -50,6 +50,27 @@ class LibreInventory(object):
         if os in ['ios', 'iosxe']:
             return 'cisco', 'ios', 'cisco_ios'
 
+        elif os in ['junos']:
+            return 'juniper', 'juniper', 'juniper'
+
+        elif os in ['iosxe']:
+            return 'cisco', 'cisco_xe', 'cisco_xe'
+
+        elif os in ['asa']:
+            return 'cisco', 'cisco_asa', 'cisco_asa'
+
+        elif os in ['fortigate']:
+            return 'fortinet', 'fortinet', 'fortinet'
+        
+        elif os in ['ironware']:
+            return 'brocade', 'brocade_netiron', 'brocade_netiron'
+
+        elif os in ['nos']:
+            return 'brocade', 'brocade_nos', 'brocade_nos'
+
+        elif os in ['foundryos']:
+            return 'brocade', 'brocade_fastiron', 'brocade_fastiron'
+
         elif os in ['nxos']:
             return 'cisco', 'nxos', 'cisco_nxos'
 
